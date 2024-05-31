@@ -14,7 +14,10 @@ services:
       - mysql-data:/var/lib/mysql
 
   app:
-    image: ubicatp-backend
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: app
     depends_on:
       - mysql_db
     ports:
@@ -23,9 +26,9 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql_db:3306/back-ubicatp
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: asfdfdabhg
-    build:
-      context: .
-      dockerfile: Dockerfile
+    volumes:
+      - .:/app
+    command: ["mvn", "spring-boot:run"]
 
 volumes:
   mysql-data:
