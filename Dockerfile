@@ -14,4 +14,4 @@ RUN mvn dependency:go-offline -B
 EXPOSE 8080
 
 # Comando para compilar y ejecutar la aplicación
-CMD ["mvn", "spring-boot:run", "-Dspring-boot.run.profiles=dev"]
+CMD ["mvn", "spring-boot:run"]
