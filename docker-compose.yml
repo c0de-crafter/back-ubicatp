@@ -28,7 +28,6 @@ services:
       SPRING_DATASOURCE_PASSWORD: asfdfdabhg
     volumes:
       - .:/app
-    command: ["mvn", "spring-boot:run"]
 
 volumes:
   mysql-data:
