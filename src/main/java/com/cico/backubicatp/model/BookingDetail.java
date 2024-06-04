@@ -1,5 +1,6 @@
 package com.cico.backubicatp.model;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -36,7 +37,7 @@ public class BookingDetail {
     @Column(length = 255)
     private String benefits;
 
-    @ManyToOne
+    @OneToOne
     @JoinColumn(name = "id_booking", nullable = false, foreignKey = @ForeignKey(name = "FK_DETAIL_BOOKING"))
     private Booking booking;
 }

@@ -34,3 +34,35 @@ build/
 
 ### docker-compose ###
 db_data/
+
+# Maven
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+
+# IntelliJ IDEA
+.idea/
+
+
+# Docker
+docker-compose.override.yml
+docker-compose.debug.yml
+docker-compose.local.yml
+
+# Environment
+.env
+
+# Maven wrapper
+.mvn/
+!mvnw
+!mvnw.cmd
+
+# Ignore local Maven repository
+.m2/
+
+# Ignore temporary files
+*.tmp
+
+generate*.sh

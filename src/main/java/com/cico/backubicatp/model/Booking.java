@@ -1,5 +1,6 @@
 package com.cico.backubicatp.model;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -7,7 +8,6 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 import java.util.Date;
-import java.util.List;
 
 @Data
 @AllArgsConstructor
@@ -43,6 +43,6 @@ public class Booking {
     @JoinColumn(name = "id_user", nullable = false, foreignKey = @ForeignKey(name = "FK_BOOKING_USER"))
     private User user;
 
-    @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL)
-    private List<BookingDetail> bookingDetails;
+    @OneToOne(mappedBy = "booking", cascade = CascadeType.ALL)
+    private BookingDetail bookingDetail;
 }

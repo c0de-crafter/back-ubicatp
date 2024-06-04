@@ -22,12 +22,10 @@ services:
       - mysql_db
     ports:
       - "8080:8080"
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql_db:3306/back-ubicatp
-      SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: asfdfdabhg
     volumes:
       - .:/app
+      - ~/.m2:/root/.m2
+      - ./src:/app/src
 
 volumes:
   mysql-data:

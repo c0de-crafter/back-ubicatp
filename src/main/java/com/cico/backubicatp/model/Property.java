@@ -1,5 +1,6 @@
 package com.cico.backubicatp.model;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -31,9 +32,6 @@ public class Property {
 
     @Column(length = 255)
     private String benefits;
-
-    @OneToMany(mappedBy = "property", cascade = CascadeType.ALL)
-    private List<Booking> bookings;
 
     @ManyToOne
     @JoinColumn(name = "id_landlord", nullable = false, foreignKey = @ForeignKey(name = "FK_PROPERTY_LANDLORD"))

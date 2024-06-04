@@ -1,5 +1,6 @@
 package com.cico.backubicatp.model;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -38,10 +39,4 @@ public class User {
 
     @Column(length = 50, nullable = false)
     private String role;
-
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
-    private List<Booking> bookings;
-
-    @OneToMany(mappedBy = "landlord", cascade = CascadeType.ALL)
-    private List<Property> properties;
 }
