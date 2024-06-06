@@ -43,13 +43,4 @@ public class UserDTO {
 
     @Size(max = 255)
     private String profilePicture;
-
-    @NotNull
-    private boolean enabled;
-
-    @NotNull
-    private List<BookingDTO> bookings;
-
-    @NotNull
-    private List<PropertyDTO> properties;
 }

@@ -38,6 +38,4 @@ public class BookingDTO {
     @NotNull
     private UserDTO user;
 
-    @NotNull
-    private List<BookingDetailDTO> bookingDetails;
 }

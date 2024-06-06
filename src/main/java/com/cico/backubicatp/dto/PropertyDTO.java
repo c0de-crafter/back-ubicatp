@@ -34,7 +34,4 @@ public class PropertyDTO {
 
     @NotNull
     private UserDTO landlord;
-
-    @NotNull
-    private List<BookingDTO> bookings;
 }
