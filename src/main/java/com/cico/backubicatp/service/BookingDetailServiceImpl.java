@@ -1,9 +1,8 @@
-package com.cico.backubicatp.service.impl;
+package com.cico.backubicatp.service;
 
 import com.cico.backubicatp.model.BookingDetail;
 import com.cico.backubicatp.repo.IBookingDetailRepo;
 import com.cico.backubicatp.repo.IGenericRepo;
-import com.cico.backubicatp.service.IBookingDetailService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 

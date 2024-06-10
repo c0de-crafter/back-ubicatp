@@ -1,9 +1,8 @@
-package com.cico.backubicatp.service.impl;
+package com.cico.backubicatp.service;
 
 import com.cico.backubicatp.model.Property;
 import com.cico.backubicatp.repo.IPropertyRepo;
 import com.cico.backubicatp.repo.IGenericRepo;
-import com.cico.backubicatp.service.IPropertyService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 

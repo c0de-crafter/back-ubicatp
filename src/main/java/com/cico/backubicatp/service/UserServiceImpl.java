@@ -1,9 +1,8 @@
-package com.cico.backubicatp.service.impl;
+package com.cico.backubicatp.service;
 
 import com.cico.backubicatp.model.User;
 import com.cico.backubicatp.repo.IUserRepo;
 import com.cico.backubicatp.repo.IGenericRepo;
-import com.cico.backubicatp.service.IUserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;

@@ -1,4 +1,4 @@
-package com.cico.backubicatp.service.impl;
+package com.cico.backubicatp.service;
 
 import com.cico.backubicatp.exception.ModelNotFoundException;
 import com.cico.backubicatp.repo.IGenericRepo;
