@@ -1,0 +1,1971 @@
+===== BackUbicatpApplication.java =====
+package com.cico.backubicatp;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class BackUbicatpApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(BackUbicatpApplication.class, args);
+	}
+
+}
+
+===== DataLoader.java =====
+package com.cico.backubicatp.config;
+
+import com.cico.backubicatp.model.User;
+import com.cico.backubicatp.repo.IUserRepo;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Component;
+
+@Component
+public class DataLoader implements CommandLineRunner {
+
+    private final IUserRepo userRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    public DataLoader(IUserRepo userRepository, PasswordEncoder passwordEncoder) {
+        this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
+    }
+
+    @Override
+    public void run(String... args) throws Exception {
+        // Cargar datos iniciales en la base de datos
+        userRepository.save(new User(1, "luis@gmail.com", passwordEncoder.encode("1234"), "Luis", "Gorpa", "luis_picture.png", "admin"));
+        userRepository.save(new User(2, "maria.rodriguez@example.com", passwordEncoder.encode("password1"), "Maria", "Rodriguez", "maria_picture.png", "admin"));
+        userRepository.save(new User(3, "juan.perez@example.com", passwordEncoder.encode("password2"), "Juan", "Perez", "juan_picture.png", "admin"));
+        userRepository.save(new User(4, "ana.lopez@example.com", passwordEncoder.encode("password3"), "Ana", "Lopez", "ana_picture.png", "admin"));
+        userRepository.save(new User(5, "carlos.gomez@example.com", passwordEncoder.encode("password4"), "Carlos", "Gomez", "carlos_picture.png", "admin"));
+        userRepository.save(new User(6, "laura.martinez@example.com", passwordEncoder.encode("password5"), "Laura", "Martinez", "laura_picture.png", "admin"));
+    }
+}
+===== MapperConfig.java =====
+package com.cico.backubicatp.config;
+
+import com.cico.backubicatp.dto.BookingDTO;
+import com.cico.backubicatp.dto.BookingDetailDTO;
+import com.cico.backubicatp.dto.PropertyDTO;
+import com.cico.backubicatp.dto.UserDTO;
+import com.cico.backubicatp.model.Booking;
+import com.cico.backubicatp.model.BookingDetail;
+import com.cico.backubicatp.model.Property;
+import com.cico.backubicatp.model.User;
+import org.modelmapper.ModelMapper;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class MapperConfig {
+
+//    @Bean("bookingMapper")
+//    public ModelMapper bookingMapper(){
+//        return new ModelMapper();
+//    }
+//
+//    @Bean("bookingDetailMapper")
+//    public ModelMapper bookingDetailMapper(){
+//        return new ModelMapper();
+//    }
+//
+//    @Bean("propertyMapper")
+//    public ModelMapper propertyMapper(){
+//        return new ModelMapper();
+//    }
+//
+//    @Bean("userMapper")
+//    public ModelMapper userMapper(){
+//        return new ModelMapper();
+//    }
+
+    @Bean("defaultMapper")
+    public ModelMapper defaultMapper(){
+        return new ModelMapper();
+    }
+}
+
+===== RestConfig.java =====
+package com.cico.backubicatp.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.client.RestTemplate;
+
+@Configuration
+public class RestConfig {
+
+    @Bean
+    public RestTemplate restTemplate() {
+        return new RestTemplate();
+    }
+}
+
+===== WebConfig.java =====
+package com.cico.backubicatp.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+@Configuration
+public class WebConfig {
+
+    @Bean
+    public WebMvcConfigurer corsConfigurer() {
+        return new WebMvcConfigurer() {
+            @Override
+            public void addCorsMappings(CorsRegistry registry) {
+                registry.addMapping("/**")
+                        .allowedOriginPatterns("*")  // Usar allowedOriginPatterns en lugar de allowedOrigins
+                        .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                        .allowedHeaders("*")
+                        .allowCredentials(true)
+                        .maxAge(3600);
+            }
+        };
+    }
+}
+
+===== AuthController.java =====
+package com.cico.backubicatp.controller;
+
+import com.cico.backubicatp.dto.UserDTO;
+import com.cico.backubicatp.model.User;
+import com.cico.backubicatp.security.JwtRequest;
+import com.cico.backubicatp.security.JwtResponse;
+import com.cico.backubicatp.security.JwtTokenUtil;
+import com.cico.backubicatp.service.IUserService;
+import lombok.RequiredArgsConstructor;
+import org.modelmapper.ModelMapper;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/auth")
+@RequiredArgsConstructor
+public class AuthController {
+    private final AuthenticationManager authenticationManager;
+    private final JwtTokenUtil jwtTokenUtil;
+    private final UserDetailsService userDetailsService;
+    private final IUserService service;
+    @Qualifier("defaultMapper")
+    private final ModelMapper modelMapper;
+
+    @PostMapping("/login")
+    public ResponseEntity<JwtResponse> login(@RequestBody JwtRequest req) throws Exception {
+        authenticate(req.getUsername(), req.getPassword());
+
+        final UserDetails userDetails = userDetailsService.loadUserByUsername(req.getUsername());
+        final String token = jwtTokenUtil.generateToken(userDetails);
+
+        return ResponseEntity.ok(new JwtResponse(token));
+    }
+
+    @PostMapping("/register")
+    public ResponseEntity<UserDTO> register(@RequestBody UserDTO dto)throws Exception {
+        User obj = service.save(convertToEntity(dto));
+        return new ResponseEntity<>(convertToDto(obj), HttpStatus.CREATED);
+//        userService.saveUser(req);
+//        return ResponseEntity.ok("User registered successfully");
+    }
+
+    private void authenticate(String username, String password) throws Exception{
+        try {
+            authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(username, password));
+        } catch (DisabledException e) {
+            throw new Exception("USER_DISABLED", e);
+        } catch (BadCredentialsException e) {
+            throw new Exception("INVALID_CREDENTIALS", e);
+        }
+    }
+    private UserDTO convertToDto(User obj) {
+        return modelMapper.map(obj, UserDTO.class);
+    }
+
+    private User convertToEntity(UserDTO dto) {
+        return modelMapper.map(dto, User.class);
+    }
+}
+===== BookingController.java =====
+package com.cico.backubicatp.controller;
+
+import com.cico.backubicatp.dto.BookingDTO;
+import com.cico.backubicatp.dto.GenericResponse;
+import com.cico.backubicatp.dto.GenericResponseRecord;
+import com.cico.backubicatp.model.Booking;
+import com.cico.backubicatp.service.IBookingService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.modelmapper.ModelMapper;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+@RestController
+@RequestMapping("/bookings")
+@RequiredArgsConstructor
+public class BookingController {
+
+    private final IBookingService service;
+    @Qualifier("defaultMapper")
+    private final ModelMapper modelMapper;
+
+    @GetMapping
+    public ResponseEntity<GenericResponseRecord<BookingDTO>> readAll() throws Exception {
+        List<BookingDTO> list = service.readAll().stream().map(this::convertToDto).toList();
+        return ResponseEntity.ok(new GenericResponseRecord<>(200, "success", new ArrayList<>(list)));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<GenericResponse<BookingDTO>> readById(@PathVariable("id") Integer id) throws Exception {
+        BookingDTO dto = convertToDto(service.readById(id));
+        return ResponseEntity.ok(new GenericResponse<>(200, "success", Arrays.asList(dto)));
+    }
+
+    @PostMapping
+    public ResponseEntity<BookingDTO> save(@Valid @RequestBody BookingDTO dto) throws Exception {
+        Booking obj = service.save(convertToEntity(dto));
+        return new ResponseEntity<>(convertToDto(obj), HttpStatus.CREATED);
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<BookingDTO> update(@Valid @PathVariable("id") Integer id, @RequestBody BookingDTO dto) throws Exception {
+        Booking obj = service.update(convertToEntity(dto), id);
+        return ResponseEntity.ok(convertToDto(obj));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable("id") Integer id) throws Exception {
+        service.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    private BookingDTO convertToDto(Booking obj) {
+        return modelMapper.map(obj, BookingDTO.class);
+    }
+
+    private Booking convertToEntity(BookingDTO dto) {
+        return modelMapper.map(dto, Booking.class);
+    }
+}
+
+===== BookingDetailController.java =====
+package com.cico.backubicatp.controller;
+
+import com.cico.backubicatp.dto.BookingDetailDTO;
+import com.cico.backubicatp.dto.GenericResponse;
+import com.cico.backubicatp.dto.GenericResponseRecord;
+import com.cico.backubicatp.model.BookingDetail;
+import com.cico.backubicatp.service.IBookingDetailService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.modelmapper.ModelMapper;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+@RestController
+@RequestMapping("/booking-details")
+@RequiredArgsConstructor
+public class BookingDetailController {
+
+    private final IBookingDetailService service;
+    @Qualifier("defaultMapper")
+    private final ModelMapper modelMapper;
+
+    @GetMapping
+    public ResponseEntity<GenericResponseRecord<BookingDetailDTO>> readAll() throws Exception {
+        List<BookingDetailDTO> list = service.readAll().stream().map(this::convertToDto).toList();
+        return ResponseEntity.ok(new GenericResponseRecord<>(200, "success", new ArrayList<>(list)));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<GenericResponse<BookingDetailDTO>> readById(@PathVariable("id") Integer id) throws Exception {
+        BookingDetailDTO dto = convertToDto(service.readById(id));
+        return ResponseEntity.ok(new GenericResponse<>(200, "success", Arrays.asList(dto)));
+    }
+
+    @PostMapping
+    public ResponseEntity<BookingDetailDTO> save(@Valid @RequestBody BookingDetailDTO dto) throws Exception {
+        BookingDetail obj = service.save(convertToEntity(dto));
+        return new ResponseEntity<>(convertToDto(obj), HttpStatus.CREATED);
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<BookingDetailDTO> update(@Valid @PathVariable("id") Integer id, @RequestBody BookingDetailDTO dto) throws Exception {
+        BookingDetail obj = service.update(convertToEntity(dto), id);
+        return ResponseEntity.ok(convertToDto(obj));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable("id") Integer id) throws Exception {
+        service.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    private BookingDetailDTO convertToDto(BookingDetail obj) {
+        return modelMapper.map(obj, BookingDetailDTO.class);
+    }
+
+    private BookingDetail convertToEntity(BookingDetailDTO dto) {
+        return modelMapper.map(dto, BookingDetail.class);
+    }
+}
+
+===== HealthController.java =====
+package com.cico.backubicatp.controller;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class HealthController {
+
+    @GetMapping("/health")
+    public String healthCheck() {
+        return "Application is running, hola";
+    }
+}
+
+===== PropertyController.java =====
+package com.cico.backubicatp.controller;
+
+import com.cico.backubicatp.dto.PropertyDTO;
+import com.cico.backubicatp.dto.GenericResponse;
+import com.cico.backubicatp.dto.GenericResponseRecord;
+import com.cico.backubicatp.model.Property;
+import com.cico.backubicatp.service.IPropertyService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.modelmapper.ModelMapper;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+@RestController
+@RequestMapping("/properties")
+@RequiredArgsConstructor
+public class PropertyController {
+
+    private final IPropertyService service;
+    @Qualifier("defaultMapper")
+    private final ModelMapper modelMapper;
+
+    @GetMapping
+    public ResponseEntity<GenericResponseRecord<PropertyDTO>> readAll() throws Exception {
+        List<PropertyDTO> list = service.readAll().stream().map(this::convertToDto).toList();
+        return ResponseEntity.ok(new GenericResponseRecord<>(200, "success", new ArrayList<>(list)));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<GenericResponse<PropertyDTO>> readById(@PathVariable("id") Integer id) throws Exception {
+        PropertyDTO dto = convertToDto(service.readById(id));
+        return ResponseEntity.ok(new GenericResponse<>(200, "success", Arrays.asList(dto)));
+    }
+
+    @PostMapping
+    public ResponseEntity<PropertyDTO> save(@Valid @RequestBody PropertyDTO dto) throws Exception {
+        Property obj = service.save(convertToEntity(dto));
+        return new ResponseEntity<>(convertToDto(obj), HttpStatus.CREATED);
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<PropertyDTO> update(@Valid @PathVariable("id") Integer id, @RequestBody PropertyDTO dto) throws Exception {
+        Property obj = service.update(convertToEntity(dto), id);
+        return ResponseEntity.ok(convertToDto(obj));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable("id") Integer id) throws Exception {
+        service.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    private PropertyDTO convertToDto(Property obj) {
+        return modelMapper.map(obj, PropertyDTO.class);
+    }
+
+    private Property convertToEntity(PropertyDTO dto) {
+        return modelMapper.map(dto, Property.class);
+    }
+}
+
+===== UserController.java =====
+package com.cico.backubicatp.controller;
+
+import com.cico.backubicatp.dto.UserDTO;
+import com.cico.backubicatp.dto.GenericResponse;
+import com.cico.backubicatp.dto.GenericResponseRecord;
+import com.cico.backubicatp.model.User;
+import com.cico.backubicatp.service.IUserService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.modelmapper.ModelMapper;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+@RestController
+@RequestMapping("/users")
+@RequiredArgsConstructor
+public class UserController {
+
+    private final IUserService service;
+    @Qualifier("defaultMapper")
+    private final ModelMapper modelMapper;
+
+    @GetMapping
+    public ResponseEntity<GenericResponseRecord<UserDTO>> readAll() throws Exception {
+        List<UserDTO> list = service.readAll().stream().map(this::convertToDto).toList();
+        return ResponseEntity.ok(new GenericResponseRecord<>(200, "success", new ArrayList<>(list)));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<GenericResponse<UserDTO>> readById(@PathVariable("id") Integer id) throws Exception {
+        UserDTO dto = convertToDto(service.readById(id));
+        return ResponseEntity.ok(new GenericResponse<>(200, "success", Arrays.asList(dto)));
+    }
+
+    @PostMapping
+    public ResponseEntity<UserDTO> save(@Valid @RequestBody UserDTO dto) throws Exception {
+        User obj = service.save(convertToEntity(dto));
+        return new ResponseEntity<>(convertToDto(obj), HttpStatus.CREATED);
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<UserDTO> update(@Valid @PathVariable("id") Integer id, @RequestBody UserDTO dto) throws Exception {
+        User obj = service.update(convertToEntity(dto), id);
+        return ResponseEntity.ok(convertToDto(obj));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable("id") Integer id) throws Exception {
+        service.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    private UserDTO convertToDto(User obj) {
+        return modelMapper.map(obj, UserDTO.class);
+    }
+
+    private User convertToEntity(UserDTO dto) {
+        return modelMapper.map(dto, User.class);
+    }
+}
+
+===== BookingDetailDTO.java =====
+package com.cico.backubicatp.dto;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class BookingDetailDTO {
+
+    private Integer idBookingDetail;
+
+    @NotNull
+    @Size(min = 3, max = 100)
+    private String rentalName;
+
+    @NotNull
+    @Size(min = 3, max = 150)
+    private String address;
+
+    @NotNull
+    @Size(min = 2, max = 50)
+    private String area;
+
+    @NotNull
+    @Size(min = 3, max = 255)
+    private String description;
+
+    @Size(max = 255)
+    private String reference;
+
+    @Size(max = 255)
+    private String benefits;
+
+    @NotNull
+    private BookingDTO booking;
+}
+
+===== BookingDTO.java =====
+package com.cico.backubicatp.dto;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.Date;
+import java.util.List;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class BookingDTO {
+
+    private Integer idBooking;
+
+    @NotNull
+    private Date startDate;
+
+    @NotNull
+    private Date endDate;
+
+    @NotNull
+    @Min(value = 1)
+    private int numberOfPeople;
+
+    @NotNull
+    @Min(value = 0)
+    private float price;
+
+    @NotNull
+    private PropertyDTO property;
+
+    @NotNull
+    private UserDTO user;
+
+}
+
+===== GenericResponse.java =====
+package com.cico.backubicatp.dto;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.List;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class GenericResponse<T> {
+
+    private int status;
+    private String message;
+    private List<T> data;
+}
+
+===== GenericResponseRecord.java =====
+package com.cico.backubicatp.dto;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+
+import java.util.List;
+
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public record GenericResponseRecord<T>(
+        int status,
+        String message,
+        List<T> data
+) {
+}
+
+===== PropertyDTO.java =====
+package com.cico.backubicatp.dto;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.List;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class PropertyDTO {
+
+    private Integer idProperty;
+
+    @NotNull
+    @Size(min = 3, max = 100)
+    private String propertyName;
+
+    @NotNull
+    @Size(min = 3, max = 255)
+    private String description;
+
+    @NotNull
+    @Size(min = 3, max = 150)
+    private String location;
+
+    @Size(max = 255)
+    private String benefits;
+
+    @NotNull
+    private UserDTO landlord;
+}
+
+===== UserDTO.java =====
+package com.cico.backubicatp.dto;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonIncludeProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.List;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class UserDTO {
+
+    private Integer idUser;
+
+    @JsonIncludeProperties(value = {"role"})
+    @NotNull
+    private String role;
+
+    @JsonProperty(value = "email")
+    @NotNull
+    @Size(min = 3, max = 50)
+    private String email;
+
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    @NotNull
+    @Size(min = 3, max = 60)
+    private String password;
+
+    @NotNull
+    @Size(min = 3, max = 100)
+    private String firstName;
+
+    @NotNull
+    @Size(min = 3, max = 100)
+    private String lastName;
+
+    @Size(max = 255)
+    private String profilePicture;
+}
+
+===== CustomErrorResponse.java =====
+package com.cico.backubicatp.exception;
+
+import java.time.LocalDateTime;
+
+public record CustomErrorResponse(
+        LocalDateTime datetime,
+        String message,
+        String path
+) {
+}
+
+===== GlobalErrorHandler.java =====
+package com.cico.backubicatp.exception;
+
+import com.cico.backubicatp.dto.GenericResponse;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.WebRequest;
+
+import java.net.URI;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Arrays;
+
+@RestControllerAdvice
+public class GlobalErrorHandler {
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<GenericResponse<CustomErrorResponse>> handleAllExceptions(Exception ex, WebRequest req){
+
+        CustomErrorResponse errorResponse = new CustomErrorResponse(LocalDateTime.now(), ex.getMessage(), req.getDescription(false));
+        return new ResponseEntity<>(new GenericResponse<>(500, "BACKEND-ERROR", Arrays.asList(errorResponse)), HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @ExceptionHandler(ModelNotFoundException.class)
+    public ResponseEntity<GenericResponse<CustomErrorResponse>> handleModelNotFoundException(ModelNotFoundException ex, WebRequest req){
+
+        CustomErrorResponse errorResponse = new CustomErrorResponse(LocalDateTime.now(), ex.getMessage(), req.getDescription(false));
+
+        return new ResponseEntity<>(new GenericResponse<>(404, "error", Arrays.asList(errorResponse)), HttpStatus.NOT_FOUND);
+    }
+
+    // Desde Spring Boot 3+
+    /*@ExceptionHandler(ModelNotFoundException.class)
+    public ProblemDetail handleModelNotFoundException(ModelNotFoundException ex, WebRequest req){
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+        pd.setTitle("Model Not Found Exception");
+        pd.setType(URI.create(req.getContextPath()));
+        pd.setProperty("code", 404);
+        pd.setProperty("message", "not-found");
+        return pd;
+    }*/
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<GenericResponse<CustomErrorResponse>> handleBadRequest(MethodArgumentNotValidException ex, WebRequest req){
+
+        CustomErrorResponse errorResponse = new CustomErrorResponse(LocalDateTime.now(), ex.getMessage(), req.getDescription(false));
+
+        return new ResponseEntity<>(new GenericResponse<>(400, "error", Arrays.asList(errorResponse)), HttpStatus.BAD_REQUEST);
+    }
+}
+
+===== ModelNotFoundException.java =====
+package com.cico.backubicatp.exception;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.ResponseStatus;
+
+// @ResponseStatus(HttpStatus.NOT_FOUND)
+public class ModelNotFoundException extends RuntimeException {
+
+    public ModelNotFoundException(String message) {
+        super(message);
+    }
+}
+
+===== Booking.java =====
+package com.cico.backubicatp.model;
+
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
+
+import java.util.Date;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
+@Entity
+public class Booking {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @EqualsAndHashCode.Include
+    private Integer idBooking;
+
+    @Temporal(TemporalType.DATE)
+    @Column(nullable = false)
+    private Date startDate;
+
+    @Temporal(TemporalType.DATE)
+    @Column(nullable = false)
+    private Date endDate;
+
+    @Column(nullable = false)
+    private int numberOfPeople;
+
+    @Column(columnDefinition = "decimal(10,2)", nullable = false)
+    private float price;
+
+    @ManyToOne
+    @JoinColumn(name = "id_property", nullable = false, foreignKey = @ForeignKey(name = "FK_BOOKING_PROPERTY"))
+    private Property property;
+
+    @ManyToOne
+    @JoinColumn(name = "id_user", nullable = false, foreignKey = @ForeignKey(name = "FK_BOOKING_USER"))
+    private User user;
+
+    @OneToOne(mappedBy = "booking", cascade = CascadeType.ALL)
+    private BookingDetail bookingDetail;
+}
+
+===== BookingDetail.java =====
+package com.cico.backubicatp.model;
+
+import com.fasterxml.jackson.annotation.JsonBackReference;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
+@Entity
+public class BookingDetail {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @EqualsAndHashCode.Include
+    private Integer idBookingDetail;
+
+    @Column(length = 100, nullable = false)
+    private String rentalName;
+
+    @Column(length = 150, nullable = false)
+    private String address;
+
+    @Column(length = 50, nullable = false)
+    private String area;
+
+    @Column(length = 255, nullable = false)
+    private String description;
+
+    @Column(length = 255)
+    private String reference;
+
+    @Column(length = 255)
+    private String benefits;
+
+    @OneToOne
+    @JoinColumn(name = "id_booking", nullable = false, foreignKey = @ForeignKey(name = "FK_DETAIL_BOOKING"))
+    private Booking booking;
+}
+
+===== Property.java =====
+package com.cico.backubicatp.model;
+
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
+
+import java.util.List;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
+@Entity
+public class Property {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @EqualsAndHashCode.Include
+    private Integer idProperty;
+
+    @Column(length = 100, nullable = false)
+    private String propertyName;
+
+    @Column(length = 255, nullable = false)
+    private String description;
+
+    @Column(length = 150, nullable = false)
+    private String location;
+
+    @Column(length = 255)
+    private String benefits;
+
+    @ManyToOne
+    @JoinColumn(name = "id_landlord", nullable = false, foreignKey = @ForeignKey(name = "FK_PROPERTY_LANDLORD"))
+    private User landlord;
+}
+
+===== User.java =====
+package com.cico.backubicatp.model;
+
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
+
+import java.util.List;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
+@Entity
+@Table(name = "user_data")
+public class User {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @EqualsAndHashCode.Include
+    private Integer idUser;
+
+    @Column(length = 50, nullable = false, unique = true)
+    private String email;
+
+    @Column(length = 60, nullable = false)
+    private String password;
+
+    @Column(length = 100, nullable = false)
+    private String firstName;
+
+    @Column(length = 100, nullable = false)
+    private String lastName;
+
+    @Column(length = 255)
+    private String profilePicture;
+
+    @Column(length = 50, nullable = false)
+    private String role;
+}
+
+===== IBookingDetailRepo.java =====
+package com.cico.backubicatp.repo;
+
+import com.cico.backubicatp.model.BookingDetail;
+import java.util.List;
+
+public interface IBookingDetailRepo extends IGenericRepo<BookingDetail, Integer> {
+    List<BookingDetail> findByRentalName(String rentalName);
+    List<BookingDetail> findByAddress(String address);
+    List<BookingDetail> findByArea(String area);
+}
+
+===== IBookingRepo.java =====
+package com.cico.backubicatp.repo;
+
+import com.cico.backubicatp.model.Booking;
+import java.util.Date;
+import java.util.List;
+
+public interface IBookingRepo extends IGenericRepo<Booking, Integer> {
+    List<Booking> findByStartDate(Date startDate);
+    List<Booking> findByEndDate(Date endDate);
+    List<Booking> findByNumberOfPeople(int numberOfPeople);
+    List<Booking> findByPrice(float price);
+}
+
+===== IGenericRepo.java =====
+package com.cico.backubicatp.repo;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.repository.NoRepositoryBean;
+
+@NoRepositoryBean
+public interface IGenericRepo<T, ID> extends JpaRepository<T, ID> {
+}
+
+===== IPropertyRepo.java =====
+package com.cico.backubicatp.repo;
+
+import com.cico.backubicatp.model.Property;
+import java.util.List;
+
+public interface IPropertyRepo extends IGenericRepo<Property, Integer> {
+    List<Property> findByPropertyName(String propertyName);
+    List<Property> findByLocation(String location);
+    List<Property> findByLandlordIdUser(Integer landlordId);
+}
+
+===== IUserRepo.java =====
+package com.cico.backubicatp.repo;
+
+import com.cico.backubicatp.model.User;
+import java.util.List;
+
+public interface IUserRepo extends IGenericRepo<User, Integer> {
+    User findByEmail(String email);
+    List<User> findByFirstName(String firstName);
+    List<User> findByLastName(String lastName);
+    List<User> findByRole(String role);
+}
+
+===== AuthService.java =====
+package com.cico.backubicatp.security;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+
+@Service
+@Slf4j
+public class AuthService {
+
+    public boolean hasAccess() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+
+        String username = auth.getName();
+
+        log.info("User: " + username + " has access");
+
+        auth.getAuthorities().forEach(e -> log.info(e.getAuthority()));
+
+        return true;
+    }
+}
+
+===== JwtAuthenticationEntryPoint.java =====
+package com.cico.backubicatp.security;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.cico.backubicatp.exception.CustomErrorResponse;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+import java.time.LocalDateTime;
+
+@Component
+public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
+
+    @Override
+    public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException authException) throws IOException, ServletException {
+        String message = (String) request.getAttribute("error");
+
+        if(message == null){
+            message = "Authentication failed or Token not found";
+        }
+
+        CustomErrorResponse errorResponse = new CustomErrorResponse(LocalDateTime.now(), message, request.getRequestURI());
+
+        response.setStatus(HttpStatus.UNAUTHORIZED.value());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.getWriter().write(convertObjectToJson(errorResponse));
+    }
+
+    private String convertObjectToJson(Object object) throws JsonProcessingException {
+        if(object == null){
+            return null;
+        }
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.findAndRegisterModules();
+        return mapper.writeValueAsString(object);
+    }
+}
+
+===== JwtRequest.java =====
+package com.cico.backubicatp.security;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class JwtRequest {
+
+    private String username;
+    private String password;
+}
+
+===== JwtRequestFilter.java =====
+package com.cico.backubicatp.security;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+
+@Profile(value = {"dev", "qa", "prod"})
+@Component
+@RequiredArgsConstructor
+public class JwtRequestFilter extends OncePerRequestFilter {
+
+    private final JwtUserDetailsService jwtUserDetailsService;
+    private final JwtTokenUtil jwtTokenUtil;
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
+        final String header = request.getHeader("Authorization");
+
+        String username = null;
+        String jwtToken = null;
+
+        if (header != null && header.startsWith("Bearer ")) {
+            final int TOKEN_POSITION = 7;
+            jwtToken = header.substring(TOKEN_POSITION);
+
+            try{
+                username = jwtTokenUtil.getUsernameFromToken(jwtToken);
+            }catch (Exception e){
+                request.setAttribute("error", e.getMessage());
+            }
+        }
+
+        if(username != null && jwtToken != null) {
+            UserDetails userDetails = jwtUserDetailsService.loadUserByUsername(username);
+
+            if(jwtTokenUtil.validateToken(jwtToken, userDetails)) {
+                UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+
+                SecurityContextHolder.getContext().setAuthentication(authentication);
+            }
+        }
+
+        filterChain.doFilter(request, response);
+    }
+}
+
+===== JwtResponse.java =====
+package com.cico.backubicatp.security;
+
+public record JwtResponse(String jwtToken) {
+}
+
+
+===== JwtTokenUtil.java =====
+package com.cico.backubicatp.security;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.stereotype.Component;
+
+import javax.crypto.SecretKey;
+import java.io.Serializable;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+@Component
+public class JwtTokenUtil implements Serializable {
+
+    public final long JWT_TOKEN_VALIDITY = 5 * 60 * 60 * 1000; // 5 horas
+
+    @Value("${jwt.secret}") // EL Expression Language
+    private String secret;
+
+    public String generateToken(UserDetails userDetails){
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("role", userDetails.getAuthorities().stream().map(GrantedAuthority::getAuthority).collect(Collectors.joining(",")));
+        claims.put("test", "value-test");
+        claims.put("test2", 50);
+
+        return doGenerateToken(claims, userDetails.getUsername());
+    }
+
+    private String doGenerateToken(Map<String, Object> claims, String username) {
+        SecretKey key = Keys.hmacShaKeyFor(this.secret.getBytes());
+
+        return Jwts.builder()
+                .claims(claims)
+                .subject(username)
+                .issuedAt(new Date(System.currentTimeMillis()))
+                .expiration(new Date(System.currentTimeMillis() + JWT_TOKEN_VALIDITY))
+                .signWith(key)
+                .compact();
+    }
+
+    public Claims getAllClaimsFromToken(String token){
+        SecretKey key = Keys.hmacShaKeyFor(this.secret.getBytes());
+
+        return Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
+    }
+
+    public <T> T getClaimFromToken(String token, Function<Claims, T> claimsResolver){
+        final Claims claims = getAllClaimsFromToken(token);
+        return claimsResolver.apply(claims);
+    }
+
+    public String getUsernameFromToken(String token){
+        return getClaimFromToken(token, Claims::getSubject);
+    }
+
+    public Date getExpirationDateFromToken(String token){
+        return getClaimFromToken(token, Claims::getExpiration);
+    }
+
+    private boolean isTokenExpired(String token){
+        final Date expiration = getExpirationDateFromToken(token);
+        return expiration.before(new Date());
+    }
+
+    public boolean validateToken(String token, UserDetails userDetails) {
+        final String username = getUsernameFromToken(token);
+        return (username.equals(userDetails.getUsername()) && !isTokenExpired(token));
+    }
+}
+
+===== JwtUserDetailsService.java =====
+package com.cico.backubicatp.security;
+
+import com.cico.backubicatp.model.User;
+import com.cico.backubicatp.repo.IUserRepo;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+public class JwtUserDetailsService implements UserDetailsService {
+
+    private final IUserRepo repo;
+
+    @Override
+    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+        User user = repo.findByEmail(username);
+
+        if(user == null) {
+            throw new UsernameNotFoundException("User not found: " + username);
+        }
+
+        List<GrantedAuthority> roles = new ArrayList<>();
+        String role = user.getRole();
+        roles.add(new SimpleGrantedAuthority(role));
+
+        return new org.springframework.security.core.userdetails.User(user.getEmail(), user.getPassword(), roles);
+    }
+}
+
+===== WebSecurityConfig.java =====
+package com.cico.backubicatp.security;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
+
+import static org.springframework.security.web.util.matcher.AntPathRequestMatcher.antMatcher;
+
+@Profile(value = {"dev", "qa", "prod"})
+@Configuration
+@EnableWebSecurity
+@EnableMethodSecurity
+@RequiredArgsConstructor
+public class WebSecurityConfig {
+
+    private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
+    private final UserDetailsService jwtUserDetailsService;
+    private final JwtRequestFilter jwtRequestFilter;
+
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration) throws Exception {
+        return authenticationConfiguration.getAuthenticationManager();
+    }
+
+    @Bean
+    public static PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    @Autowired
+    public void configureGlobal(AuthenticationManagerBuilder auth) throws Exception {
+        auth.userDetailsService(jwtUserDetailsService).passwordEncoder(passwordEncoder());
+    }
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+                .csrf(AbstractHttpConfigurer::disable)
+                .cors(Customizer.withDefaults()) // Habilitar CORS
+                .authorizeHttpRequests(req -> req
+                        .requestMatchers(antMatcher("/**")).permitAll()
+                        .anyRequest().authenticated()
+                )
+                .httpBasic(Customizer.withDefaults())
+                .exceptionHandling(e -> e.authenticationEntryPoint(jwtAuthenticationEntryPoint))
+                .formLogin(AbstractHttpConfigurer::disable);
+
+        http.addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
+
+        return http.build();
+    }
+
+    @Bean
+    public CorsFilter corsFilter() {
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowCredentials(true);
+        config.addAllowedOriginPattern("*"); // Usar allowedOriginPatterns en lugar de allowedOrigins
+        config.addAllowedHeader("*");
+        config.addAllowedMethod("*");
+        source.registerCorsConfiguration("/**", config);
+        return new CorsFilter(source);
+    }
+}
+
+===== BookingDetailServiceImpl.java =====
+package com.cico.backubicatp.service;
+
+import com.cico.backubicatp.model.BookingDetail;
+import com.cico.backubicatp.repo.IBookingDetailRepo;
+import com.cico.backubicatp.repo.IGenericRepo;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+@Service
+@RequiredArgsConstructor
+public class BookingDetailServiceImpl extends CRUDImpl<BookingDetail, Integer> implements IBookingDetailService {
+
+    private final IBookingDetailRepo repo;
+
+    @Override
+    protected IGenericRepo<BookingDetail, Integer> getRepo() {
+        return repo;
+    }
+}
+
+===== BookingServiceImpl.java =====
+package com.cico.backubicatp.service;
+
+import com.cico.backubicatp.model.Booking;
+import com.cico.backubicatp.repo.IBookingRepo;
+import com.cico.backubicatp.repo.IGenericRepo;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+@Service
+@RequiredArgsConstructor
+public class BookingServiceImpl extends CRUDImpl<Booking, Integer> implements IBookingService {
+
+    private final IBookingRepo repo;
+
+    @Override
+    protected IGenericRepo<Booking, Integer> getRepo() {
+        return repo;
+    }
+}
+
+===== CRUDImpl.java =====
+package com.cico.backubicatp.service;
+
+import com.cico.backubicatp.exception.ModelNotFoundException;
+import com.cico.backubicatp.repo.IGenericRepo;
+import com.cico.backubicatp.service.ICRUD;
+
+import java.lang.reflect.Method;
+import java.util.List;
+
+public abstract class CRUDImpl<T, ID> implements ICRUD<T, ID> {
+    protected abstract IGenericRepo<T, ID> getRepo();
+
+    @Override
+    public T save(T t) throws Exception {
+        return getRepo().save(t);
+    }
+
+    @Override
+    public T update(T t, ID id) throws Exception {
+        // Java Reflection
+        Class<?> clazz = t.getClass();
+        String className = clazz.getSimpleName();
+        String methodName = "setId" + className;
+
+        Method setIdMethod = clazz.getMethod(methodName, id.getClass());
+        setIdMethod.invoke(t, id);
+        // t.setIdXYZ(id);
+        getRepo().findById(id).orElseThrow(() -> new ModelNotFoundException("ID NOT FOUND: " + id));
+        return getRepo().save(t);
+    }
+
+    @Override
+    public List<T> readAll() throws Exception {
+        return getRepo().findAll();
+    }
+
+    @Override
+    public T readById(ID id) throws Exception {
+        return getRepo().findById(id).orElseThrow(() -> new ModelNotFoundException("ID NOT FOUND: " + id));
+    }
+
+    @Override
+    public void delete(ID id) throws Exception {
+        getRepo().findById(id).orElseThrow(() -> new ModelNotFoundException("ID NOT FOUND: " + id));
+        getRepo().deleteById(id);
+    }
+}
+
+===== IBookingDetailService.java =====
+package com.cico.backubicatp.service;
+
+import com.cico.backubicatp.model.BookingDetail;
+
+public interface IBookingDetailService extends ICRUD<BookingDetail, Integer> {
+}
+
+===== IBookingService.java =====
+package com.cico.backubicatp.service;
+
+import com.cico.backubicatp.model.Booking;
+
+public interface IBookingService extends ICRUD<Booking, Integer> {
+}
+
+===== ICRUD.java =====
+package com.cico.backubicatp.service;
+
+import java.util.List;
+
+public interface ICRUD<T, ID> {
+    T save(T t) throws Exception;
+    T update(T t, ID id) throws Exception;
+    List<T> readAll() throws Exception;
+    T readById(ID id) throws Exception;
+    void delete(ID id) throws Exception;
+}
+
+===== IPropertyService.java =====
+package com.cico.backubicatp.service;
+
+import com.cico.backubicatp.model.Property;
+
+public interface IPropertyService extends ICRUD<Property, Integer> {
+}
+
+===== IUserService.java =====
+package com.cico.backubicatp.service;
+
+import com.cico.backubicatp.model.User;
+
+public interface IUserService extends ICRUD<User, Integer> {
+}
+
+===== PropertyServiceImpl.java =====
+package com.cico.backubicatp.service;
+
+import com.cico.backubicatp.model.Property;
+import com.cico.backubicatp.repo.IPropertyRepo;
+import com.cico.backubicatp.repo.IGenericRepo;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+@Service
+@RequiredArgsConstructor
+public class PropertyServiceImpl extends CRUDImpl<Property, Integer> implements IPropertyService {
+
+    private final IPropertyRepo repo;
+
+    @Override
+    protected IGenericRepo<Property, Integer> getRepo() {
+        return repo;
+    }
+}
+
+===== UserServiceImpl.java =====
+package com.cico.backubicatp.service;
+
+import com.cico.backubicatp.model.User;
+import com.cico.backubicatp.repo.IUserRepo;
+import com.cico.backubicatp.repo.IGenericRepo;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
+@Service
+@RequiredArgsConstructor
+public class UserServiceImpl extends CRUDImpl<User, Integer> implements IUserService {
+
+    private final IUserRepo repo;
+    private final PasswordEncoder passwordEncoder;
+
+    @Override
+    public User save(User user) throws Exception {
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
+        return super.save(user);
+    }
+
+    @Override
+    public User update(User user, Integer integer) throws Exception {
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
+        return super.update(user, integer);
+    }
+
+    @Override
+    protected IGenericRepo<User, Integer> getRepo() {
+        return repo;
+    }
+}
+
+===== application.properties =====
+spring.application.name=back-ubicatp
+
+spring.jpa.database=mysql
+spring.jpa.show-sql=false
+spring.jpa.hibernate.ddl-auto=update
+
+spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+spring.jpa.database-platform=org.hibernate.dialect.MySQLDialect
+spring.datasource.url=jdbc:mysql://mysql_db:3306/back-ubicatp
+spring.datasource.username=root
+spring.datasource.password=asfdfdabhg
+
+
+jwt.secret=aEIu9S7cvZUnPJWezau3rKUCxj4BLtpCVzhVSyam93prJOxofs7688P0OD5tmTIsLL6u7G9HpXvT
+
+spring.devtools.restart.enabled=true
+spring.devtools.livereload.enabled=true
+
+spring.profiles.active=dev
+
+===== data.sql =====
+-- Insertar datos en la tabla user_data
+INSERT INTO `back-ubicatp`.user_data (email, password, first_name, last_name, profile_picture, role) VALUES
+                                                                                                         ('john.doe@example.com', 'password1', 'John', 'Doe', 'john.png', 'USER'),
+                                                                                                         ('jane.doe@example.com', 'password2', 'Jane', 'Doe', 'jane.png', 'USER'),
+                                                                                                         ('admin@example.com', 'admin123', 'Admin', 'User', 'admin.png', 'ADMIN'),
+                                                                                                         ('landlord1@example.com', 'landlord123', 'Landlord1', 'Example', 'landlord1.png', 'LANDLORD'),
+                                                                                                         ('landlord2@example.com', 'landlord456', 'Landlord2', 'Example', 'landlord2.png', 'LANDLORD');
+
+-- Insertar datos en la tabla property
+INSERT INTO `back-ubicatp`.property (property_name, description, location, benefits, id_landlord) VALUES
+                                                                                                      ('Sunset Villa', 'A beautiful villa with sea view', '123 Ocean Drive', 'Pool, Wifi, Breakfast', 4),
+                                                                                                      ('Mountain Retreat', 'Cozy cabin in the mountains', '456 Mountain Road', 'Hiking, Fireplace', 4),
+                                                                                                      ('City Apartment', 'Modern apartment in the city center', '789 City Ave', 'Gym, Wifi, Parking', 5),
+                                                                                                      ('Beach House', 'Spacious house near the beach', '101 Beach Blvd', 'Pool, BBQ, Sea view', 5),
+                                                                                                      ('Country Cottage', 'Charming cottage in the countryside', '202 Country Lane', 'Garden, Fireplace', 4);
+
+-- Insertar datos en la tabla booking
+INSERT INTO `back-ubicatp`.booking (start_date, end_date, number_of_people, price, id_property, id_user) VALUES
+                                                                                                             ('2024-06-01', '2024-06-07', 4, 1200.00, 1, 1),
+                                                                                                             ('2024-07-15', '2024-07-20', 2, 800.00, 2, 2),
+                                                                                                             ('2024-08-05', '2024-08-12', 3, 900.00, 3, 1),
+                                                                                                             ('2024-09-01', '2024-09-07', 5, 1500.00, 4, 2),
+                                                                                                             ('2024-10-10', '2024-10-15', 4, 1100.00, 5, 1);
+
+-- Insertar datos en la tabla booking_detail
+INSERT INTO `back-ubicatp`.booking_detail (rental_name, address, area, description, reference, benefits, id_booking) VALUES
+                                                                                                                         ('Sunset Villa', '123 Ocean Drive', '120 sqm', 'A beautiful villa with sea view', 'Near the lighthouse', 'Pool, Wifi, Breakfast', 1),
+                                                                                                                         ('Mountain Retreat', '456 Mountain Road', '80 sqm', 'Cozy cabin in the mountains', 'Next to the hiking trail', 'Hiking, Fireplace', 2),
+                                                                                                                         ('City Apartment', '789 City Ave', '100 sqm', 'Modern apartment in the city center', 'Above the mall', 'Gym, Wifi, Parking', 3),
+                                                                                                                         ('Beach House', '101 Beach Blvd', '150 sqm', 'Spacious house near the beach', 'Close to the pier', 'Pool, BBQ, Sea view', 4),
+                                                                                                                         ('Country Cottage', '202 Country Lane', '90 sqm', 'Charming cottage in the countryside', 'Next to the farm', 'Garden, Fireplace', 5);
+
+===== output.txt =====
+
+===== BackUbicatpApplicationTests.java =====
+package com.cico.backubicatp;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+
+@SpringBootTest
+class BackUbicatpApplicationTests {
+
+	@Test
+	void contextLoads() {
+	}
+
+}
+
+===== BookingDetailServiceTest.java =====
+package com.cico.backubicatp.service;
+
+import com.cico.backubicatp.model.BookingDetail;
+import com.cico.backubicatp.repo.IBookingDetailRepo;
+import com.cico.backubicatp.service.BookingDetailServiceImpl;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.List;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+public class BookingDetailServiceTest {
+
+    @Mock
+    private IBookingDetailRepo repo;
+
+    private BookingDetailServiceImpl service;
+
+    private BookingDetail BOOKING_DETAIL_1;
+    private BookingDetail BOOKING_DETAIL_2;
+    private BookingDetail BOOKING_DETAIL_3;
+
+    @BeforeEach
+    public void init() {
+        MockitoAnnotations.openMocks(this);
+        service = new BookingDetailServiceImpl(repo);
+
+        BOOKING_DETAIL_1 = new BookingDetail(1, "Rental Name 1", "Address 1", "Area 1", "Description 1", "Reference 1", "Benefits 1", null);
+        BOOKING_DETAIL_2 = new BookingDetail(2, "Rental Name 2", "Address 2", "Area 2", "Description 2", "Reference 2", "Benefits 2", null);
+        BOOKING_DETAIL_3 = new BookingDetail(3, "Rental Name 3", "Address 3", "Area 3", "Description 3", "Reference 3", "Benefits 3", null);
+
+        List<BookingDetail> bookingDetails = List.of(BOOKING_DETAIL_1, BOOKING_DETAIL_2, BOOKING_DETAIL_3);
+
+        when(repo.findAll()).thenReturn(bookingDetails);
+        when(repo.findById(any())).thenReturn(Optional.of(BOOKING_DETAIL_1));
+        when(repo.save(any())).thenReturn(BOOKING_DETAIL_1);
+    }
+
+    @Test
+    void readAllTest() throws Exception {
+        List<BookingDetail> response = service.readAll();
+        assertEquals(3, response.size());
+    }
+
+    @Test
+    void readByIdTest() throws Exception {
+        final int ID = 1;
+        BookingDetail response = service.readById(ID);
+        assertNotNull(response);
+    }
+
+    @Test
+    void saveTest() throws Exception {
+        BookingDetail response = service.save(BOOKING_DETAIL_1);
+        assertNotNull(response);
+    }
+
+    @Test
+    void updateTest() throws Exception {
+        BookingDetail response = service.update(BOOKING_DETAIL_1, BOOKING_DETAIL_1.getIdBookingDetail());
+        assertNotNull(response);
+    }
+
+    @Test
+    void deleteTest() throws Exception {
+        final int ID = 1;
+        service.delete(ID);
+        verify(repo, times(1)).deleteById(ID);
+    }
+}
+
+===== BookingServiceTest.java =====
+package com.cico.backubicatp.service;
+
+import com.cico.backubicatp.model.Booking;
+import com.cico.backubicatp.repo.IBookingRepo;
+import com.cico.backubicatp.service.BookingServiceImpl;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.Date;
+import java.util.List;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+public class BookingServiceTest {
+
+    @Mock
+    private IBookingRepo repo;
+
+    private BookingServiceImpl service;
+
+    private Booking BOOKING_1;
+    private Booking BOOKING_2;
+    private Booking BOOKING_3;
+
+    @BeforeEach
+    public void init() {
+        MockitoAnnotations.openMocks(this);
+        service = new BookingServiceImpl(repo);
+
+        BOOKING_1 = new Booking(1, new Date(), new Date(), 4, 1200.00f, null, null, null);
+        BOOKING_2 = new Booking(2, new Date(), new Date(), 2, 800.00f, null, null, null);
+        BOOKING_3 = new Booking(3, new Date(), new Date(), 3, 900.00f, null, null, null);
+
+        List<Booking> bookings = List.of(BOOKING_1, BOOKING_2, BOOKING_3);
+
+        when(repo.findAll()).thenReturn(bookings);
+        when(repo.findById(any())).thenReturn(Optional.of(BOOKING_1));
+        when(repo.save(any())).thenReturn(BOOKING_1);
+    }
+
+    @Test
+    void readAllTest() throws Exception {
+        List<Booking> response = service.readAll();
+        assertEquals(3, response.size());
+    }
+
+    @Test
+    void readByIdTest() throws Exception {
+        final int ID = 1;
+        Booking response = service.readById(ID);
+        assertNotNull(response);
+    }
+
+    @Test
+    void saveTest() throws Exception {
+        Booking response = service.save(BOOKING_1);
+        assertNotNull(response);
+    }
+
+    @Test
+    void updateTest() throws Exception {
+        Booking response = service.update(BOOKING_1, BOOKING_1.getIdBooking());
+        assertNotNull(response);
+    }
+
+    @Test
+    void deleteTest() throws Exception {
+        final int ID = 1;
+        service.delete(ID);
+        verify(repo, times(1)).deleteById(ID);
+    }
+}
+
+===== PropertyServiceTest.java =====
+package com.cico.backubicatp.service;
+
+import com.cico.backubicatp.model.Property;
+import com.cico.backubicatp.repo.IPropertyRepo;
+import com.cico.backubicatp.service.PropertyServiceImpl;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.List;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+public class PropertyServiceTest {
+
+    @Mock
+    private IPropertyRepo repo;
+
+    private PropertyServiceImpl service;
+
+    private Property PROPERTY_1;
+    private Property PROPERTY_2;
+    private Property PROPERTY_3;
+
+    @BeforeEach
+    public void init() {
+        MockitoAnnotations.openMocks(this);
+        service = new PropertyServiceImpl(repo);
+
+        PROPERTY_1 = new Property(1, "Property 1", "Description 1", "Location 1", "Benefits 1", null);
+        PROPERTY_2 = new Property(2, "Property 2", "Description 2", "Location 2", "Benefits 2", null);
+        PROPERTY_3 = new Property(3, "Property 3", "Description 3", "Location 3", "Benefits 3", null);
+
+        List<Property> properties = List.of(PROPERTY_1, PROPERTY_2, PROPERTY_3);
+
+        when(repo.findAll()).thenReturn(properties);
+        when(repo.findById(any())).thenReturn(Optional.of(PROPERTY_1));
+        when(repo.save(any())).thenReturn(PROPERTY_1);
+    }
+
+    @Test
+    void readAllTest() throws Exception {
+        List<Property> response = service.readAll();
+        assertEquals(3, response.size());
+    }
+
+    @Test
+    void readByIdTest() throws Exception {
+        final int ID = 1;
+        Property response = service.readById(ID);
+        assertNotNull(response);
+    }
+
+    @Test
+    void saveTest() throws Exception {
+        Property response = service.save(PROPERTY_1);
+        assertNotNull(response);
+    }
+
+    @Test
+    void updateTest() throws Exception {
+        Property response = service.update(PROPERTY_1, PROPERTY_1.getIdProperty());
+        assertNotNull(response);
+    }
+
+    @Test
+    void deleteTest() throws Exception {
+        final int ID = 1;
+        service.delete(ID);
+        verify(repo, times(1)).deleteById(ID);
+    }
+}
+
+===== UserServiceTest.java =====
+package com.cico.backubicatp.service;
+
+import com.cico.backubicatp.model.User;
+import com.cico.backubicatp.repo.IUserRepo;
+import com.cico.backubicatp.service.UserServiceImpl;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+import java.util.List;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+public class UserServiceTest {
+
+    @Mock
+    private IUserRepo repo;
+
+    @Mock
+    private PasswordEncoder passwordEncoder;
+
+    private UserServiceImpl service;
+
+    private User USER_1;
+    private User USER_2;
+    private User USER_3;
+
+    @BeforeEach
+    public void init() {
+        MockitoAnnotations.openMocks(this);
+        service = new UserServiceImpl(repo, passwordEncoder);
+
+        USER_1 = new User(1, "user1@example.com", "password1", "User", "One", "user1.png", "ROLE_USER");
+        USER_2 = new User(2, "user2@example.com", "password2", "User", "Two", "user2.png", "ROLE_USER");
+        USER_3 = new User(3, "user3@example.com", "password3", "User", "Three", "user3.png", "ROLE_USER");
+
+        List<User> users = List.of(USER_1, USER_2, USER_3);
+
+        when(repo.findAll()).thenReturn(users);
+        when(repo.findById(any())).thenReturn(Optional.of(USER_1));
+        when(repo.save(any())).thenReturn(USER_1);
+        when(passwordEncoder.encode(any())).thenReturn("encodedPassword");
+    }
+
+    @Test
+    void readAllTest() throws Exception {
+        List<User> response = service.readAll();
+        assertEquals(3, response.size());
+    }
+
+    @Test
+    void readByIdTest() throws Exception {
+        final int ID = 1;
+        User response = service.readById(ID);
+        assertNotNull(response);
+    }
+
+    @Test
+    void saveTest() throws Exception {
+        User response = service.save(USER_1);
+        assertNotNull(response);
+        assertEquals("encodedPassword", response.getPassword());
+    }
+
+    @Test
+    void updateTest() throws Exception {
+        User response = service.update(USER_1, USER_1.getIdUser());
+        assertNotNull(response);
+        assertEquals("encodedPassword", response.getPassword());
+    }
+
+    @Test
+    void deleteTest() throws Exception {
+        final int ID = 1;
+        service.delete(ID);
+        verify(repo, times(1)).deleteById(ID);
+    }
+}
+
