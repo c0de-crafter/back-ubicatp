@@ -1,13 +1,10 @@
 package com.cico.backubicatp.model;
 
-import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-
-import java.util.List;
 
 @Data
 @AllArgsConstructor
@@ -36,4 +33,13 @@ public class Property {
     @ManyToOne
     @JoinColumn(name = "id_landlord", nullable = false, foreignKey = @ForeignKey(name = "FK_PROPERTY_LANDLORD"))
     private User landlord;
+
+    @Column(length = 50)
+    private String reviews;
+
+    @Column(length = 255)
+    private String image;
+
+    @Column(nullable = false)
+    private Double price;
 }

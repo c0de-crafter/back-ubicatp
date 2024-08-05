@@ -7,8 +7,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
-
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -34,4 +32,13 @@ public class PropertyDTO {
 
     @NotNull
     private UserDTO landlord;
+
+    @Size(max = 50)
+    private String reviews;
+
+    @Size(max = 255)
+    private String image;
+
+    @NotNull
+    private Double price;
 }
